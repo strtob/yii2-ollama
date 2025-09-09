@@ -13,7 +13,11 @@
         "php": ">=8.0",
         "yiisoft/yii2": "^2.1",
         "yiisoft/yii2-httpclient": "^2.0",
-        "qdrant/qdrant-php": "^1.0"
+        "qdrant/qdrant-php": "^1.0",
+        "smalot/pdfparser": "^1.0",
+        "setasign/fpdi": "^2.0",
+        "spatie/pdf-to-text": "^1.0",
+        "vlucas/phpdotenv": "^5.5"
     },
     "autoload": {
         "psr-4": {

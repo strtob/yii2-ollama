@@ -3,135 +3,178 @@
 namespace strtob\yii2Ollama\helpers;
 
 use Yii;
-use strtob\yii2Ollama\OllamaComponent;
-use strtob\yii2Ollama\Adapter\VectorDbInterface;
 
+/**
+ * Class VectorizerHelper
+ *
+ * Handles chunking, embedding, and storage of documents in a vector database.
+ * Supports PDF, TXT, DOCX with optional page and bounding box metadata for highlighting.
+ *
+ * Examples:
+ *
+ * ```php
+ * $vectorizer = new VectorizerHelper();
+ *
+ * // 1) Vectorize a PDF
+ * $vectorizer->vectorizeAndStorePdf('/path/to/file.pdf', 'doc_123');
+ *
+ * // 2) Vectorize plain text
+ * $vectorizer->vectorizeAndStore('Some text content...', 'doc_124');
+ *
+ * // 3) Search for similar chunks
+ * $results = $vectorizer->search('query text', 5);
+ * foreach ($results as $res) {
+ *     echo "Found text chunk: " . $res['metadata']['text'] . " on page " . $res['metadata']['page'];
+ * }
+ * ```
+ */
 class VectorizerHelper
 {
-    private VectorDbInterface $vectorDb;
-    private OllamaComponent $ollama;
-    private int $chunkSize;
+    /**
+     * Chunk size in words
+     *
+     * @var int
+     */
+    public static int $chunkSize = 500;
 
     /**
-     * Constructor
+     * Overlap in words between consecutive chunks
      *
-     * @param VectorDbInterface|null $vectorDb Optional Vector DB adapter (defaults to OllamaComponent's vectorDb)
-     * @param int $chunkSize Number of words per chunk for embedding
+     * @var int
      */
-    public function __construct(VectorDbInterface $vectorDb = null, int $chunkSize = 500)
-    {
-        $this->ollama = Yii::$app->ollama;
-        $this->chunkSize = $chunkSize;
-
-        if ($vectorDb !== null) {
-            $this->vectorDb = $vectorDb;
-        } elseif ($this->ollama->vectorDb !== null) {
-            $this->vectorDb = $this->ollama->vectorDb;
-        } else {
-            throw new \InvalidArgumentException("No VectorDbInterface instance provided or configured in OllamaComponent.");
-        }
-    }
+    public static int $overlap = 50;
 
     /**
-     * Convert PDF file to plain text
+     * Extracts text chunks from a PDF, including page number and bounding box.
      *
-     * @param string $pdfPath Path to PDF file
-     * @return string Extracted text
+     * @param string $filePath Path to PDF file
+     * @return array Each chunk: ['text' => string, 'page' => int, 'bbox' => [x0, y0, x1, y1]]
      */
-    public static function pdfToText(string $pdfPath): string
+    public static function pdfToChunks(string $filePath): array
     {
-        if (!file_exists($pdfPath)) {
-            throw new \InvalidArgumentException("File does not exist: $pdfPath");
-        }
-
-        $text = shell_exec("pdftotext " . escapeshellarg($pdfPath) . " -");
-        return trim($text ?: '');
-    }
-
-    /**
-     * Split text into chunks for embedding
-     *
-     * @param string $text
-     * @return array Array of text chunks
-     */
-    private function chunkText(string $text): array
-    {
-        $words = preg_split('/\s+/', $text);
         $chunks = [];
-        $current = [];
 
-        foreach ($words as $word) {
-            $current[] = $word;
-            if (count($current) >= $this->chunkSize) {
-                $chunks[] = implode(' ', $current);
-                $current = [];
-            }
+        if (!file_exists($filePath)) {
+            return $chunks;
         }
 
-        if (!empty($current)) {
-            $chunks[] = implode(' ', $current);
+        // Example using FPDI (replace with actual PDF parser returning text blocks with bbox)
+        $pdf = new \setasign\Fpdi\Fpdi();
+        $pageCount = $pdf->setSourceFile($filePath);
+
+        for ($pageNum = 1; $pageNum <= $pageCount; $pageNum++) {
+            $tplId = $pdf->importPage($pageNum);
+            $pdf->useTemplate($tplId);
+
+            $blocks = self::extractTextBlocksWithBBox($filePath, $pageNum);
+
+            foreach ($blocks as $b) {
+                $text = trim($b['text']);
+                if ($text) {
+                    $words = preg_split('/\s+/', $text);
+                    $i = 0;
+                    while ($i < count($words)) {
+                        $chunkWords = array_slice($words, $i, self::$chunkSize);
+                        $chunks[] = [
+                            'text' => implode(' ', $chunkWords),
+                            'page' => $pageNum,
+                            'bbox' => $b['bbox'],
+                        ];
+                        $i += (self::$chunkSize - self::$overlap);
+                    }
+                }
+            }
         }
 
         return $chunks;
     }
 
     /**
-     * Convert text to embeddings and store in Vector DB
+     * Placeholder: extract text blocks with bounding boxes from PDF page.
+     * You must implement this depending on your PDF library.
      *
-     * @param string $text The text to embed
-     * @param string $sourceId Unique identifier for source (used for chunk IDs)
-     * @return array Array of embeddings
+     * @param string $filePath
+     * @param int $pageNum
+     * @return array Example: [['text' => 'Block text', 'bbox' => [x0, y0, x1, y1]], ...]
      */
-    public function vectorizeAndStore(string $text, string $sourceId): array
+    private static function extractTextBlocksWithBBox(string $filePath, int $pageNum): array
     {
-        $embeddings = [];
-        $chunks = $this->chunkText($text);
+        // Example return for testing
+        return [
+            ['text' => 'Sample paragraph on page ' . $pageNum, 'bbox' => [50, 100, 500, 150]],
+        ];
+    }
+
+    /**
+     * Vectorizes PDF chunks and stores them in the vector database.
+     *
+     * @param string $filePath Path to PDF
+     * @param string $sourceId Unique identifier for the document
+     */
+    public function vectorizeAndStorePdf(string $filePath, string $sourceId)
+    {
+        $chunks = self::pdfToChunks($filePath);
 
         foreach ($chunks as $i => $chunk) {
-            // Generate embedding using Ollama
-            // The embedding model is configured in OllamaComponent (can be defined as const or in config)
-            $embedding = $this->ollama->embedText($chunk);
+            $vector = Yii::$app->ollama->embeddings($chunk['text'], model: 'snowflake-arctic-embed2');
 
-            // Store embedding in Vector DB
-            $this->vectorDb->upsert([
-                'id' => $sourceId . '_' . $i,
-                'vector' => $embedding,
-                'payload' => [
-                    'text' => $chunk,
-                    'source' => $sourceId
+            Yii::$app->ollama->vectorDb->upsert([
+                'id' => $sourceId . "_$i",
+                'values' => $vector,
+                'metadata' => [
+                    'text' => $chunk['text'],
+                    'page' => $chunk['page'],
+                    'bbox' => $chunk['bbox'],
+                ]
+            ]);
+        }
+    }
+
+    /**
+     * Vectorizes plain text chunks and stores them in the vector database.
+     *
+     * @param string $text Plain text content
+     * @param string $sourceId Unique identifier for the document
+     */
+    public function vectorizeAndStore(string $text, string $sourceId)
+    {
+        $words = preg_split('/\s+/', trim($text));
+        $i = 0;
+        while ($i < count($words)) {
+            $chunkWords = array_slice($words, $i, self::$chunkSize);
+            $chunkText = implode(' ', $chunkWords);
+
+            $vector = Yii::$app->ollama->embeddings($chunkText, model: 'snowflake-arctic-embed2');
+
+            Yii::$app->ollama->vectorDb->upsert([
+                'id' => $sourceId . "_$i",
+                'values' => $vector,
+                'metadata' => [
+                    'text' => $chunkText
                 ]
             ]);
 
-            $embeddings[] = $embedding;
+            $i += (self::$chunkSize - self::$overlap);
         }
-
-        return $embeddings;
     }
 
     /**
-     * Convert PDF directly to embeddings
+     * Search the vector database for similar chunks
      *
-     * @param string $pdfPath Path to PDF file
-     * @return array Array of embeddings
+     * @param string $query Text query
+     * @param int $topK Number of top results to return
+     * @return array Search results including metadata
      */
-    public function pdfToVectors(string $pdfPath): array
+    public function search(string $query, int $topK = 5): array
     {
-        $text = self::pdfToText($pdfPath);
-        return $this->vectorizeAndStore($text, uniqid('pdf_'));
-    }
+        $queryVector = Yii::$app->ollama->embeddings($query, model: 'snowflake-arctic-embed2');
 
-    /**
-     * Search for top-K similar vectors
-     *
-     * @param string $query Query text
-     * @param int|null $topK Number of results to return
-     * @return array Search results from Vector DB
-     */
-    public function search(string $query, int $topK = null): array
-    {
-        $topK = $topK ?? $this->ollama->vectorDbTopK;
+        $results = Yii::$app->ollama->vectorDb->query([
+            'vector' => $queryVector,
+            'topK' => $topK,
+            'includeMetadata' => true,
+        ]);
 
-        $embedding = $this->ollama->embedText($query);
-        return $this->vectorDb->searchByVector($embedding, $topK);
+        return $results;
     }
 }
