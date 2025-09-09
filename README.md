@@ -118,12 +118,15 @@ See example:
 
 ### Event Data Details
 
-- **prompt** – the input prompt string  
-- **options** – additional generation options  
-- **request** – Yii2 request object (`Yii::$app->request`)  
-- **user** – logged-in user identity (`Yii::$app->user->identity`)  
-- **response** – API response data (only in `afterGenerate`)  
-- **exception** – Exception object (only in `generateError`)  
+- Connect to Ollama API (`llama2`, `mistral`, `gemma`)  
+- Optional **vector DB integration** for context injection  
+- Supports **Yii2 HTTP Client**  
+- **Embedding generation** (`embedText`)  
+- Easy configuration via Yii2 components  
+- Multilingual exception messages (`Yii::t()`)  
+- **Events support**: `beforeGenerate`, `afterGenerate`, `generateError`  
+- **Request and User** automatically included in events for easy logging and auditing
+ 
 
 ---
 
@@ -142,6 +145,27 @@ See example:
     Yii::error("Exception: " . $event->data['exception']->getMessage(), 'ollama');
 });
 ```
+---
+
+
+## Embedding Generation Usage
+
+```php
+try {
+    $text = "Llamas are members of the camelid family.";
+    
+    $embeddingResult = \Yii::$app->ollama->embedText($text);
+    
+    echo "Embedding vector:\n";
+    print_r($embeddingResult['embedding']); // Nur die Embeddings anzeigen
+
+} catch (\yii\base\InvalidConfigException $e) {
+    echo "Configuration error: " . $e->getMessage();
+} catch (\strtob\yii2Ollama\OllamaApiException $e) {
+    echo "Embedding request failed: " . $e->getMessage();
+}
+
+
 ---
 
 ## Vector DB Support
