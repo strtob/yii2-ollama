@@ -13,17 +13,25 @@
         "php": ">=8.0",
         "yiisoft/yii2": "^2.1",
         "yiisoft/yii2-httpclient": "^2.0",
-        "qdrant/qdrant-php": "^1.0",
+        "hkulekci/qdrant": "*",
         "smalot/pdfparser": "^1.0",
         "setasign/fpdi": "^2.0",
         "spatie/pdf-to-text": "^1.0",
-        "vlucas/phpdotenv": "^5.5"
+        "vlucas/phpdotenv": "^5.5",
+        "symfony/http-client": "^7.3",
+        "nyholm/psr7": "^1.8"
     },
     "autoload": {
         "psr-4": {
             "strtob\\yii2Ollama\\": "src/"
         }
     },
-    "minimum-stability": "stable",
-    "prefer-stable": true
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "php-http/discovery": true,
+            "yiisoft/yii2-composer": true
+        }
+    }
 }

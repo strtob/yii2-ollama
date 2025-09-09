@@ -3,35 +3,36 @@
 namespace strtob\yii2Ollama;
 
 use strtob\yii2Ollama\adapter\VectorDbInterface;
+use Qdrant\Client as QdrantClient;
 
 /**
  * Adapter to use Qdrant as a Vector DB for OllamaComponent.
  *
  * Example usage:
  * ```php
- * $qdrantClient = new \Qdrant\Client(['url' => 'http://localhost:6333']);
+ * $qdrantClient = new QdrantClient(['url' => 'http://localhost:6333']);
  * $adapter = new \strtob\yii2Ollama\QdrantAdapter($qdrantClient, 'my_collection', $ollamaComponent);
  * ```
  */
 class QdrantAdapter implements VectorDbInterface
 {
-    /** @var \Qdrant\Client Qdrant client instance */
-    protected \Qdrant\Client $client;
+    /** @var QdrantClient Qdrant client instance */
+    protected QdrantClient $client;
 
     /** @var string Name of the collection in Qdrant */
     protected string $collection;
 
-    /** @var \strtob\yii2Ollama\OllamaComponent Optional: Ollama for embeddings */
+    /** @var OllamaComponent|null Optional: Ollama for embeddings */
     protected ?OllamaComponent $ollama;
 
     /**
      * Constructor
      *
-     * @param \Qdrant\Client $client Qdrant client instance
+     * @param QdrantClient $client Qdrant client instance
      * @param string $collection Name of the collection
      * @param OllamaComponent|null $ollama Optional OllamaComponent for embedding generation
      */
-    public function __construct(\Qdrant\Client $client, string $collection, OllamaComponent $ollama = null)
+    public function __construct(QdrantClient $client, string $collection, OllamaComponent $ollama = null)
     {
         $this->client = $client;
         $this->collection = $collection;
@@ -60,13 +61,11 @@ class QdrantAdapter implements VectorDbInterface
      */
     public function searchByVector(array $embedding, int $topK = 5): array
     {
-        $results = $this->client->search(
-            $this->collection,
-            $embedding,
-            ['limit' => $topK]
-        );
+        $response = $this->client->points()->search($this->collection, $embedding, [
+            'limit' => $topK
+        ]);
 
-        return array_map(fn($item) => $item['payload']['text'] ?? '', $results);
+        return array_map(fn($item) => $item['payload']['text'] ?? '', $response['result'] ?? []);
     }
 
     /**
@@ -79,12 +78,13 @@ class QdrantAdapter implements VectorDbInterface
      */
     public function upsert(array $vectorData): void
     {
-        $this->client->upsert(
-            $this->collection,
-            $vectorData['id'],
-            $vectorData['vector'],
-            $vectorData['payload'] ?? []
-        );
+        $this->client->points()->upsert($this->collection, [
+            [
+                'id' => $vectorData['id'],
+                'vector' => $vectorData['vector'],
+                'payload' => $vectorData['payload'] ?? [],
+            ]
+        ]);
     }
 
     /**
