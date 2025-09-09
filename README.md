@@ -68,13 +68,6 @@ try {
 }
 ```
 ---
-## Supported Models
-
-- `llama2`  
-- `mistral`  
-- `gemma`  
-
----
 
 ### Stream Modus
 
@@ -106,7 +99,7 @@ See example:
     }
 ```
 
-# Yii2 Ollama Component – Events
+### Yii2 Ollama Component – Events
 
 `OllamaComponent` supports **three main events** during generation:
 
@@ -179,6 +172,16 @@ use strtob\yii2Ollama\QdrantAdapter;
 $qdrantAdapter = new QdrantAdapter($qdrantClient, 'my_collection');
 ```
 OllamaComponent will automatically prepend top-K context from the vector DB to the prompt.
+
+---
+### Supported Models so far
+
+- `llama2`  
+- `mistral`  
+- `gemma`  
+
+
+---
 
 ## License
 
