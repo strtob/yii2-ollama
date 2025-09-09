@@ -8,7 +8,9 @@ Yii2 component for **Ollama API** with optional **vector database support** (e.g
 - Optional **vector DB integration** for context injection  
 - Supports **Yii2 HTTP Client**  
 - Easy configuration via Yii2 components  
-- Multilingual exception messages (`Yii::t()`)
+- Multilingual exception messages (`Yii::t()`)  
+- **Events support**: `beforeGenerate`, `afterGenerate`, `generateError`  
+- **Request and User** automatically included in events for easy logging and auditing
 
 ---
 
@@ -103,6 +105,44 @@ See example:
 
     }
 ```
+
+# Yii2 Ollama Component – Events
+
+`OllamaComponent` supports **three main events** during generation:
+
+| Event | When Triggered | Data Included |
+|-------|----------------|---------------|
+| `beforeGenerate` | Before sending a request to the Ollama API | `prompt`, `options`, `request`, `user` |
+| `afterGenerate` | After receiving a successful response | `prompt`, `options`, `request`, `user`, `response` |
+| `generateError` | When an exception occurs during generation | `prompt`, `options`, `request`, `user`, `exception` |
+
+### Event Data Details
+
+- **prompt** – the input prompt string  
+- **options** – additional generation options  
+- **request** – Yii2 request object (`Yii::$app->request`)  
+- **user** – logged-in user identity (`Yii::$app->user->identity`)  
+- **response** – API response data (only in `afterGenerate`)  
+- **exception** – Exception object (only in `generateError`)  
+
+---
+
+### Example Usage
+
+```php
+// Log after generation
+\Yii::$app->ollama->on(\strtob\yii2Ollama\OllamaComponent::EVENT_AFTER_GENERATE, function($event) {
+    Yii::info("Prompt generated: {$event->data['prompt']}", 'ollama');
+    Yii::info("User: " . ($event->data['user']->username ?? 'guest'), 'ollama');
+});
+
+// Handle errors
+\Yii::$app->ollama->on(\strtob\yii2Ollama\OllamaComponent::EVENT_GENERATE_ERROR, function($event) {
+    Yii::error("Generation failed for prompt: {$event->data['prompt']}", 'ollama');
+    Yii::error("Exception: " . $event->data['exception']->getMessage(), 'ollama');
+});
+```
+---
 
 ## Vector DB Support
 
