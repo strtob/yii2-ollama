@@ -5,6 +5,7 @@ namespace strtob\yii2Ollama;
 use Yii;
 use yii\base\Component;
 use yii\httpclient\Client;
+use yii\httpclient\CurlTransport;
 use yii\base\InvalidConfigException;
 use strtob\yii2Ollama\Adapter\VectorDbInterface;
 use strtob\yii2Ollama\Exception\OllamaApiException;
@@ -20,7 +21,7 @@ use strtob\yii2Ollama\Exception\OllamaApiException;
  * 'components' => [
  *     'ollama' => [
  *         'class' => 'strtob\yii2Ollama\OllamaComponent',
- *         'apiUrl' => 'http://localhost:11434/v1/generate',
+ *         'apiUrl' => 'http://localhost:11434/v1/completions',
  *         'apiKey' => 'MY_SECRET_TOKEN',
  *         'model' => \strtob\yii2Ollama\OllamaComponent::MODEL_MISTRAL,
  *         'temperature' => 0.7,
@@ -38,9 +39,13 @@ use strtob\yii2Ollama\Exception\OllamaApiException;
  * try {
  *     $prompt = "Explain RAG with vector DB.";
  *
+ *     // Only text
  *     $text = \Yii::$app->ollama->generateText($prompt);
  *
- *     echo $text;
+ *     // Text + token usage
+ *     $result = \Yii::$app->ollama->generateTextWithTokens($prompt);
+ *     echo $result['text'];
+ *     print_r($result['tokens']);
  *
  * } catch (\yii\base\InvalidConfigException $e) {
  *     echo Yii::t('yii2-ollama', 'Configuration error: {message}', ['message' => $e->getMessage()]);
@@ -51,69 +56,48 @@ use strtob\yii2Ollama\Exception\OllamaApiException;
  */
 class OllamaComponent extends Component
 {
-    // Model constants
     public const MODEL_LLAMA2 = 'llama2';
     public const MODEL_MISTRAL = 'mistral';
     public const MODEL_GEMMA = 'gemma';
 
-    /** @var array List of supported models */
     public const SUPPORTED_MODELS = [
         self::MODEL_LLAMA2,
         self::MODEL_MISTRAL,
         self::MODEL_GEMMA,
     ];
 
-    /** @var string API endpoint URL for Ollama */
     public string $apiUrl = 'http://localhost:11434/v1/completions';
-
-    /** @var string API access token */
     public string $apiKey = '';
-
-    /** @var string Default model to use for requests */
     public string $model = self::MODEL_LLAMA2;
-
-    /** @var float Default temperature for text generation (0–1) */
     public float $temperature = 0.7;
-
-    /** @var int Maximum tokens for a generated response */
     public int $maxTokens = 512;
-
-    /** @var float Top-p (nucleus sampling) for token selection */
     public float $topP = 0.9;
-
-    /** @var array|null Stop sequences to end text generation */
     public ?array $stop = null;
-
-    /** @var VectorDbInterface|null Optional vector DB for RAG context */
     public ?VectorDbInterface $vectorDb = null;
-
-    /** @var int Number of top vector DB results to include */
     public int $vectorDbTopK = 5;
 
-    /**
-     * Generate a full response array from Ollama API.
-     *
-     * If a vector DB is set, automatically injects top-K context into the prompt.
-     *
-     * @param string $prompt
-     * @param array $options Overrides for model, temperature, max_tokens, top_p, stop
-     * @return array
-     * @throws InvalidConfigException
-     * @throws OllamaApiException
-     */
+    public function init(): void
+    {
+        parent::init();
+
+        if (!ini_get('allow_url_fopen')) {
+            throw new InvalidConfigException(
+                'PHP setting "allow_url_fopen" must be enabled to use OllamaComponent.'
+            );
+        }
+    }
+
     public function generate(string $prompt, array $options = []): array
     {
         if (empty($this->apiUrl)) {
-            throw new InvalidConfigException(Yii::t('yii2-ollama', 'Ollama API URL is not set.'));
+            throw new InvalidConfigException('Ollama API URL is not set.');
         }
 
-        // Authorization header optional
         $headers = ['Content-Type' => 'application/json'];
         if (!empty($this->apiKey)) {
             $headers['Authorization'] = 'Bearer ' . $this->apiKey;
         }
 
-        // Inject vector DB context if available
         if ($this->vectorDb !== null) {
             $contextItems = $this->vectorDb->search($prompt, $this->vectorDbTopK);
             if (!empty($contextItems)) {
@@ -122,30 +106,20 @@ class OllamaComponent extends Component
             }
         }
 
-        $data = [
+        $data = array_merge([
             'model' => $this->model,
             'prompt' => $prompt,
             'max_tokens' => $this->maxTokens,
             'temperature' => $this->temperature,
             'top_p' => $this->topP,
-        ];
+            'stop' => $this->stop,
+        ], $options);
 
-
-        // merge if exists
-        if (!empty($options)) {
-            $data = array_merge($data, $options);
-        }
-
-        // Validate model
         if (!in_array($data['model'], self::SUPPORTED_MODELS)) {
-            throw new InvalidConfigException(Yii::t(
-                'yii2-ollama',
-                'Unsupported model: {model}',
-                ['model' => $data['model']]
-            ));
+            throw new InvalidConfigException('Unsupported model: ' . $data['model']);
         }
 
-        $client = new Client();
+        $client = new Client(['transport' => CurlTransport::class]);
 
         try {
             $response = $client->createRequest()
@@ -153,21 +127,15 @@ class OllamaComponent extends Component
                 ->setUrl($this->apiUrl)
                 ->setHeaders($headers)
                 ->setData($data)
-                ->setFormat(Client::FORMAT_JSON) // <<< wichtig!
+                ->setFormat(Client::FORMAT_JSON)
                 ->send();
 
             if ($response->isOk) {
                 return $response->data;
             }
 
-            throw new OllamaApiException(Yii::t(
-                'yii2-ollama',
-                'Ollama API returned error: {status} - {content}',
-                ['status' => $response->statusCode, 'content' => $response->content]
-            ));
-
+            throw new OllamaApiException('Ollama API returned error: ' . $response->statusCode);
         } catch (\Throwable $e) {
-            // Build detailed context for debugging
             $context = [
                 'url' => $this->apiUrl,
                 'model' => $this->model,
@@ -176,31 +144,43 @@ class OllamaComponent extends Component
                 'apiKeySet' => !empty($this->apiKey),
             ];
 
-            throw new OllamaApiException(Yii::t(
-                'yii2-ollama',
-                'Ollama API request failed: {message}. Context: {context}',
-                [
-                    'message' => $e->getMessage(),
-                    'context' => json_encode($context, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-                ]
-            ), 0, $e);
+            throw new OllamaApiException(
+                'Ollama API request failed: ' . $e->getMessage() . '. Context: ' . json_encode($context, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT),
+                0,
+                $e
+            );
         }
-
     }
 
-
     /**
-     * Helper method to return only the generated text.
-     *
-     * @param string $prompt
-     * @param array $options
-     * @return string
-     * @throws InvalidConfigException
-     * @throws OllamaApiException
+     * Return only the generated text.
      */
     public function generateText(string $prompt, array $options = []): string
     {
         $response = $this->generate($prompt, $options);
-        return $response['text'] ?? '';
+        
+        return $response['choices'][0]['text'] ?? '';
+    }
+
+    /**
+     * Return generated text along with token usage.
+     *
+     * @return array ['text' => string, 'tokens' => array]
+     */
+    public function generateTextWithTokens(string $prompt, array $options = []): array
+    {
+        $response = $this->generate($prompt, $options);
+
+        $text = '';
+        if (!empty($response['choices'][0]['text'])) {
+            $text = $response['choices'][0]['text'];
+        }
+
+        $tokens = $response['usage'] ?? [];
+
+        return [
+            'text' => $text,
+            'tokens' => $tokens,
+        ];
     }
 }
