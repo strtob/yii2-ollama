@@ -47,7 +47,7 @@ $qdrantAdapter = new QdrantAdapter($qdrantClient, 'my_collection');
 
 ## Usage in Controller
 
-```
+```php
 try {
     $prompt = "Explain RAG with vector DB.";
 
@@ -65,7 +65,7 @@ try {
     echo Yii::t('yii2-ollama', 'API request failed: {message}', ['message' => $e->getMessage()]);
 }
 ```
-
+---
 ## Supported Models
 
 - `llama2`  
@@ -73,6 +73,36 @@ try {
 - `gemma`  
 
 ---
+
+### Stream Modus
+
+See example:
+
+```php
+ public function actionIndex()
+    {
+        $response = Yii::$app->response;
+        $response->format = \yii\web\Response::FORMAT_RAW;
+        Yii::$app->response->isSent = true;
+
+        // Output-Puffer leeren
+        while (ob_get_level())
+            ob_end_clean();
+        ob_implicit_flush(true);
+
+        Yii::$app->ollama->stream = true;
+
+        try {
+            Yii::$app->ollama->generate("Whats up?", [], function ($chunk) {
+                echo $chunk;
+                flush();
+            });
+        } catch (\Throwable $e) {
+            echo "\n[Error]: " . $e->getMessage();
+        }
+
+    }
+```
 
 ## Vector DB Support
 
