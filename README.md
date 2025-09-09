@@ -23,6 +23,23 @@ composer require strtob/yii2-ollama
 ```
 Ensure you have yiisoft/yii2-httpclient and a Qdrant PHP client installed if you want vector DB support.
 
+Migration:
+
+```bash
+
+'controllerMap' => [
+    'migrate' => [
+        'class' => 'yii\console\controllers\MigrateController',
+        'migrationNamespaces' => [
+            'strtob\yii2Ollama\migrations',
+        ],
+    ],
+],
+
+
+yii migrate
+```
+
 ## Configuration
 
 Example `config/web.php` using a Qdrant adapter:
@@ -161,6 +178,41 @@ try {
 
 ---
 
+## Document Model (ActiveRecord with Vector DB)
+
+You can use an ActiveRecord model to handle documents and automatically generate embeddings for them in your vector database. Supports PDF, TXT, DOCX uploads.
+
+```php
+use app\models\DocumentModel;
+use yii\web\UploadedFile;
+
+// 1) Create a new document
+$doc = new DocumentModel();
+$doc->title = 'Sample PDF';
+$doc->user_id = 1;
+$doc->uploadedFile = UploadedFile::getInstance($model, 'uploadedFile');
+$doc->save(); // extracts text and stores embeddings automatically
+
+// 2) Update document content and embeddings
+$doc = DocumentModel::findOne($id);
+$doc->title = 'Updated Title';
+$doc->uploadedFile = UploadedFile::getInstance($model, 'uploadedFile'); // optional
+$doc->save(); // embeddings updated automatically
+
+// 3) Delete document and corresponding vectors
+$doc = DocumentModel::findOne($id);
+$doc->delete(); // deletes vectors in vector DB automatically
+```
+
+### How It Works
+
+- beforeSave() – Converts PDFs to text or reads uploaded TXT/DOCX.
+- afterSave() – Generates embeddings using VectorizerHelper and stores them in the vector database.
+- afterDelete() – Removes corresponding vectors from the vector database.
+
+This makes your document storage fully RAG-ready, automatically connecting your database records with vector embeddings.
+
+---
 ## Vector DB Support
 
 Implement the `VectorDbInterface` to use any vector database. Example Qdrant adapter:
@@ -174,7 +226,7 @@ $qdrantAdapter = new QdrantAdapter($qdrantClient, 'my_collection');
 OllamaComponent will automatically prepend top-K context from the vector DB to the prompt.
 
 ---
-### Supported Models so far
+### Supported LLM Models so far
 
 - `llama2`  
 - `mistral`  

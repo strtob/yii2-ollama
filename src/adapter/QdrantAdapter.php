@@ -2,7 +2,7 @@
 
 namespace strtob\yii2Ollama;
 
-use strtob\yii2Ollama\Adapter\VectorDbInterface;
+use strtob\yii2Ollama\adapter\VectorDbInterface;
 
 /**
  * Adapter to use Qdrant as a Vector DB for OllamaComponent.

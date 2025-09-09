@@ -1,6 +1,6 @@
 <?php
 
-namespace strtob\yii2Ollama\Adapter;
+namespace strtob\yii2Ollama\adapter;
 
 /**
  * Interface for vector database clients.
