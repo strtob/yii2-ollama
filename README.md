@@ -164,7 +164,7 @@ try {
 } catch (\strtob\yii2Ollama\OllamaApiException $e) {
     echo "Embedding request failed: " . $e->getMessage();
 }
-
+```
 
 ---
 
