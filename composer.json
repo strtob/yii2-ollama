@@ -1,0 +1,25 @@
+{
+    "name": "strtob/yii2-ollama",
+    "description": "Yii2 component for Ollama API with optional vector DB support (Qdrant)",
+    "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Tobias Streckel",
+            "email": "streckel@gmx.de"
+        }
+    ],
+    "require": {
+        "php": ">=8.0",
+        "yiisoft/yii2": "^2.1",
+        "yiisoft/yii2-httpclient": "^2.0",
+        "qdrant/qdrant-php": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "strtob\\yii2Ollama\\": "src/"
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}
